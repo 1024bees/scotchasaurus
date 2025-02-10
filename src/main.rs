@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+use core::ops::BitAnd;
+
 use esp_backtrace as _;
 use esp_hal::{
     delay::Delay,
@@ -13,7 +15,7 @@ use esp_println::logger;
 
 // Replace with the actual I2C address of the AD5693
 // (0x0C, 0x0D, 0x0E, 0x0F, etc., depending on your A0/A1 pins).
-const AD5693_I2C_ADDR: u8 = 0x0C;
+const AD5693_I2C_ADDR: u8 = 0x4C;
 
 // This is "Write to and Update DAC" command for AD5693 if we
 // want to send a 16-bit value. According to the AD5693 datasheet,
@@ -41,7 +43,7 @@ static SINE_LUT: [u16; SINE_TABLE_SIZE] = {
     while i < SINE_TABLE_SIZE {
         // Sine from -1.0..1.0
         //let sine_val = (2.0 * PI * i as f32 / SINE_TABLE_SIZE as f32).sin();
-        let sine_val = (2.0 * PI * i as f32 / SINE_TABLE_SIZE as f32);
+        let sine_val = 2.0 * PI * i as f32 / SINE_TABLE_SIZE as f32;
 
         // Shift from -1..1 to 0..65535
         let scaled = ((sine_val * 0.5) + 0.5) * (u16::MAX as f32);
@@ -86,8 +88,8 @@ fn main() -> ! {
     // Adjust GPIO numbers to match your board.
     // For example on ESP32, GPIO21 is SDA, GPIO22 is SCL
 
-    let sda_pin = peripherals.GPIO0;
-    let scl_pin = peripherals.GPIO2;
+    let sda_pin = peripherals.GPIO6;
+    let scl_pin = peripherals.GPIO7;
 
     // Create the I2C driver at 400 kHz (Fast Mode).
     let i2c = I2c::new(
@@ -122,11 +124,20 @@ fn main() -> ! {
         // The AD5693 datasheet shows a 24-bit frame for some devices with multiple channels,
         // but typically for a single-channel device you have 2 data bytes plus the control nibble.
         // Double-check with your specific device.
+        log::info!("writing");
 
         dac.write_update(value).ok();
 
         // Increment LUT index
         idx = (idx + 1) % SINE_TABLE_SIZE;
+
+        let val = dac.read();
+
+        if let Ok(inner) = val {
+            log::info!("{}", inner);
+        } else {
+            log::info!("failed to read i2c");
+        }
 
         // Delay to achieve ~42k samples/sec
         delay.delay_micros(sample_interval_us);
@@ -151,25 +162,20 @@ where
     /// The final command byte = 0x3 << 4 = 0x30 for the upper nibble, plus the top bits of data.
     pub fn write_update(&mut self, value: u16) -> Result<(), E> {
         // The AD5693's 16-bit data is split across two bytes:
-        //   byte1 = (CMD << 4) | (value >> 12)
-        //   byte2 = (value >> 4) & 0xFF
-        //   byte3 = (value & 0xF) << 4  (if the device expects 3 bytes total)
-        //
-        // On some variants (AD5693, AD5692R, etc.) the frame might be 2 bytes vs 3 bytes,
-        // so confirm with your datasheet.
-        // Some AD569x devices use 3 bytes. If yours is 2 bytes, adapt accordingly.
 
-        let byte1 = CMD_WRITE_UPDATE | ((value >> 12) as u8 & 0x0F);
-        let byte2 = (value >> 4) as u8;
-        let byte3 = ((value & 0x0F) << 4) as u8;
+        let byte1 = CMD_WRITE_UPDATE;
+        let byte2 = (value >> 8).bitand(0x0F) as u8;
+        let byte3 = (value).bitand(0x0F) as u8;
 
-        // If your device truly needs 2-byte writes, drop byte3.
-        // If it needs 3 bytes, keep them.
-        // Often AD5693 is documented with a 24-bit frame in the datasheet:
-        //  [C3 C2 C1 C0 D15 D14 D13 D12]  [D11..D4]  [D3..D0 <4bits of dummy>]
         let data = [byte1, byte2, byte3];
 
         self.i2c.write(AD5693_I2C_ADDR, &data)
+    }
+
+    pub fn read(&mut self) -> Result<u16, E> {
+        let mut bytes: [u8; 2] = [0; 2];
+        self.i2c.read(AD5693_I2C_ADDR, bytes.as_mut_slice())?;
+        Ok(u16::from_be_bytes(bytes))
     }
 
     /// If you need to free the I2C peripheral
