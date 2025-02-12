@@ -19,6 +19,12 @@ embedded-io = "0.6.1"
 heapless = { version = "0.8.0", default-features = false }
 embedded-hal = "1.0.0"
 
+esp-wifi = { version = "0.12.0", features = ["esp32c3", "ble"] }
+bleps = { git = "https://github.com/bjoernQ/bleps", package = "bleps", rev = "a5148d8ae679e021b78f53fd33afb8bb35d0b62e", features = [
+  "macros",
+
+] }
+
 [profile.dev]
 # Rust debug is too slow.
 # For debug builds always builds with some optimization

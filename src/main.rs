@@ -2,16 +2,28 @@
 #![no_main]
 
 use core::ops::BitAnd;
-
+use core::time;
 use esp_backtrace as _;
+use esp_hal::rng::Rng;
+
 use esp_hal::{
     delay::Delay,
     i2c::master::{Config, I2c},
     main,
-    time::RateExtU32,
+    time::{self, Duration, RateExtU32},
     timer::timg::TimerGroup,
 };
 use esp_println::logger;
+
+use bleps::{
+    ad_structure::{
+        create_advertising_data, AdStructure, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE,
+    },
+    att::Uuid,
+    attribute_server::{AttributeServer, NotificationData, WorkResult},
+    gatt, Ble, HciConnector,
+};
+use esp_wifi::ble::controller::BleConnector;
 
 // Replace with the actual I2C address of the AD5693
 // (0x0C, 0x0D, 0x0E, 0x0F, etc., depending on your A0/A1 pins).
@@ -71,6 +83,7 @@ fn main() -> ! {
 
     let config = esp_hal::Config::default();
     let peripherals = esp_hal::init(config);
+    let mut bluetooth = peripherals.BT;
 
     // Timers can be used for WDT or alarms; we disable WDT here for simplicity.
     let mut timer_group0 = TimerGroup::new(peripherals.TIMG0);
@@ -107,6 +120,35 @@ fn main() -> ! {
 
     // We want to output a sample every 1 / SAMPLE_RATE seconds
     let sample_interval_us = (1_000_000u32 / SAMPLE_RATE) as u32;
+    let init = esp_wifi::init(
+        timer_group0.timer0,
+        Rng::new(peripherals.RNG),
+        peripherals.RADIO_CLK,
+    )
+    .unwrap();
+
+    let connector = BleConnector::new(&init, &mut bluetooth);
+    let now = || esp_hal::time::now().duration_since_epoch().as_millis();
+
+    let hci = HciConnector::new(connector, now);
+    let mut ble = Ble::new(&hci);
+
+    log::info!("{:?}", ble.init());
+    log::info!("{:?}", ble.cmd_set_le_advertising_parameters());
+    log::info!(
+        "{:?}",
+        ble.cmd_set_le_advertising_data(
+            create_advertising_data(&[
+                AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
+                AdStructure::ServiceUuids16(&[Uuid::Uuid16(0x1809)]),
+                AdStructure::CompleteLocalName(esp_hal::chip!()),
+            ])
+            .unwrap()
+        )
+    );
+    log::info!("{:?}", ble.cmd_set_le_advertise_enable(true));
+
+    log::info!("started advertising");
 
     let mut idx = 0;
     loop {
