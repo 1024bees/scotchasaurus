@@ -2,7 +2,7 @@
 #![no_main]
 
 use core::ops::BitAnd;
-use core::time;
+
 use esp_backtrace as _;
 use esp_hal::rng::Rng;
 
@@ -128,7 +128,7 @@ fn main() -> ! {
     .unwrap();
 
     let connector = BleConnector::new(&init, &mut bluetooth);
-    let now = || esp_hal::time::now().duration_since_epoch().as_millis();
+    let now = || esp_hal::time::now().duration_since_epoch().to_millis();
 
     let hci = HciConnector::new(connector, now);
     let mut ble = Ble::new(&hci);
