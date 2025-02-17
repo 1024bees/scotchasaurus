@@ -1,16 +1,16 @@
 #![no_std]
 #![no_main]
 
+use core::f32::consts::PI;
 use core::ops::BitAnd;
 
 use esp_backtrace as _;
 use esp_hal::rng::Rng;
-
 use esp_hal::{
     delay::Delay,
     i2c::master::{Config, I2c},
     main,
-    time::{self, Duration, RateExtU32},
+    time::{Duration, RateExtU32},
     timer::timg::TimerGroup,
 };
 use esp_println::logger;
@@ -25,31 +25,20 @@ use bleps::{
 };
 use esp_wifi::ble::controller::BleConnector;
 
-// Replace with the actual I2C address of the AD5693
-// (0x0C, 0x0D, 0x0E, 0x0F, etc., depending on your A0/A1 pins).
-const AD5693_I2C_ADDR: u8 = 0x4C;
+/// I2C address for the MCP4725 (as configured on your board).
+const MCP4725_I2C_ADDR: u8 = 0x62;
 
-// This is "Write to and Update DAC" command for AD5693 if we
-// want to send a 16-bit value. According to the AD5693 datasheet,
-// the command bits for "Write to and Update (Normal Operation)" is 0b0011 (3 << 4 == 0x30).
-const CMD_WRITE_UPDATE: u8 = 0x30;
-
-// How many samples in one cycle of the sine wave table.
+/// We build a 100-sample sine wave table (16-bit),
+/// but MCP4725 is 12-bit, so we will shift down by 4 bits when writing.
 const SINE_TABLE_SIZE: usize = 100;
 
-// Desired output frequency = 420 Hz
-// If we have SINE_TABLE_SIZE = 100, we need a sample rate of 420 * 100 = 42_000 samples/sec
-// That is quite high for I2C at standard mode (100 kHz). At 400 kHz Fast Mode,
-// you might get close, but watch out for I2C overhead.
-// For demonstration we'll try a smaller rate or see if we can push I2C to 400 kHz.
-
+/// Desired output frequency for the tone.
 const OUTPUT_FREQ: u32 = 420;
-const SAMPLE_RATE: u32 = OUTPUT_FREQ * SINE_TABLE_SIZE as u32; // 42_000
+/// We want 100 samples per cycle, so the sample rate = 420 * 100 = 42,000 samples/sec.
+const SAMPLE_RATE: u32 = OUTPUT_FREQ * SINE_TABLE_SIZE as u32; // 42,000
 
-// Build a 100-sample sine wave table scaled to 16-bit output.
-// The AD5693 has 16-bit resolution, so valid values are 0 ..= 65535.
+/// Pre-computed 16-bit sine wave lookup table with 100 samples.
 static SINE_LUT: [u16; SINE_TABLE_SIZE] = {
-    const PI: f32 = core::f32::consts::PI;
     let mut table = [0u16; SINE_TABLE_SIZE];
     let mut i = 0;
     while i < SINE_TABLE_SIZE {
@@ -60,6 +49,7 @@ static SINE_LUT: [u16; SINE_TABLE_SIZE] = {
         // Shift from -1..1 to 0..65535
         let scaled = ((sine_val * 0.5) + 0.5) * (u16::MAX as f32);
         // Guard range in case of rounding
+
         let clamped = if scaled < 0.0 {
             0
         } else if scaled > u16::MAX as f32 {
@@ -83,28 +73,28 @@ fn main() -> ! {
 
     let config = esp_hal::Config::default();
     let peripherals = esp_hal::init(config);
-    let mut bluetooth = peripherals.BT;
 
-    // Timers can be used for WDT or alarms; we disable WDT here for simplicity.
+    let mut bluetooth = peripherals.BT;
     let mut timer_group0 = TimerGroup::new(peripherals.TIMG0);
     let mut wdt0 = timer_group0.wdt;
-
     let mut timer_group1 = TimerGroup::new(peripherals.TIMG1);
     let mut wdt1 = timer_group1.wdt;
 
-    // Delay provider
+    // Provide delay
     let mut delay = Delay::new();
 
     // -------------------------
     // 2. Set up I2C
     // -------------------------
     // Adjust GPIO numbers to match your board.
-    // For example on ESP32, GPIO21 is SDA, GPIO22 is SCL
+    // For example on ESP32, GPIO21 is SDA, GPIO22 is SCL, etc.
 
     let sda_pin = peripherals.GPIO6;
     let scl_pin = peripherals.GPIO7;
 
-    // Create the I2C driver at 400 kHz (Fast Mode).
+    // Create the I2C driver at ~100kHz or 400kHz.
+    // The faster the bus, the easier to achieve the higher sample rate,
+    // but watch out for overhead.
     let i2c = I2c::new(
         peripherals.I2C0,
         Config::default().with_frequency(100.kHz()),
@@ -113,23 +103,24 @@ fn main() -> ! {
     .with_sda(sda_pin)
     .with_scl(scl_pin);
 
-    // Wrap I2C in a RefCell or Mutex if you plan to share across tasks/interrupts.
-    let mut dac = AD5693::new(i2c);
+    // Initialize the MCP4725 driver
+    let mut dac = Mcp4725::new(i2c);
 
-    log::info!("Starting 420 Hz tone output...");
+    log::info!("Starting MCP4725 tone output (420 Hz)...");
 
-    // We want to output a sample every 1 / SAMPLE_RATE seconds
-    let sample_interval_us = (1_000_000u32 / SAMPLE_RATE) as u32;
+    // Each sample is 1 / 42,000 seconds ≈ 23.8µs.
+    let sample_interval_us = 1_000_000u32 / SAMPLE_RATE;
+
+    // Optionally enable BLE (commented out if not needed):
+    /*
     let init = esp_wifi::init(
         timer_group0.timer0,
         Rng::new(peripherals.RNG),
         peripherals.RADIO_CLK,
     )
     .unwrap();
-
     let connector = BleConnector::new(&init, &mut bluetooth);
     let now = || esp_hal::time::now().duration_since_epoch().to_millis();
-
     let hci = HciConnector::new(connector, now);
     let mut ble = Ble::new(&hci);
 
@@ -147,77 +138,53 @@ fn main() -> ! {
         )
     );
     log::info!("{:?}", ble.cmd_set_le_advertise_enable(true));
-
-    log::info!("started advertising");
+    log::info!("Started advertising");
+    */
 
     let mut idx = 0;
     loop {
-        // 3. Write next sample from the LUT
-        let value = SINE_LUT[idx];
+        // Write next sample
+        let value_16 = SINE_LUT[idx];
+        // MCP4725 is 12-bit, so shift down by 4.
+        // If you prefer, you can also create a 12-bit LUT directly.
+        dac.write_fast_mode(value_16 >> 4).ok();
 
-        // Send data to DAC: AD5693 expects two data bytes plus
-        // the command nibble in the high 4 bits of the first byte.
-        // Full 16-bit input data is: D[15:0].
-        // For "Write & update" command, upper nibble is 0x3 (0011).
-        // Byte 1: [CMD(4 bits) | D15..D12 (4 bits)]
-        // Byte 2: [D11..D4 (8 bits)]
-        // Byte 3: [D3..D0 (4 bits) << 4, typically] (But AD5693 is 16-bit: we use 2 data bytes total.)
-        //
-        // The AD5693 datasheet shows a 24-bit frame for some devices with multiple channels,
-        // but typically for a single-channel device you have 2 data bytes plus the control nibble.
-        // Double-check with your specific device.
-        log::info!("writing");
-
-        dac.write_update(value).ok();
-
-        // Increment LUT index
         idx = (idx + 1) % SINE_TABLE_SIZE;
 
-        let val = dac.read();
-
-        if let Ok(inner) = val {
-            log::info!("{}", inner);
-        } else {
-            log::info!("failed to read i2c");
-        }
-
-        // Delay to achieve ~42k samples/sec
+        log::info!("wrote!");
+        // Delay to maintain ~42 kHz sample rate
         delay.delay_micros(sample_interval_us);
     }
 }
 
-/// A small wrapper around the I2C peripheral for AD5693
-pub struct AD5693<I2C> {
+/// A small wrapper around the I2C peripheral for MCP4725 (12-bit DAC).
+pub struct Mcp4725<I2C> {
     i2c: I2C,
 }
 
-impl<I2C, E> AD5693<I2C>
+impl<I2C, E> Mcp4725<I2C>
 where
     I2C: embedded_hal::i2c::I2c<Error = E>,
 {
     pub fn new(i2c: I2C) -> Self {
-        AD5693 { i2c }
+        Self { i2c }
     }
 
-    /// Writes a 16-bit raw value to the DAC and updates its output.
-    /// For single-channel AD5693, the command nibble for 'Write to DAC and Update' is 0x3 (0b0011).
-    /// The final command byte = 0x3 << 4 = 0x30 for the upper nibble, plus the top bits of data.
-    pub fn write_update(&mut self, value: u16) -> Result<(), E> {
-        // The AD5693's 16-bit data is split across two bytes:
+    /// Write a 12-bit value (0..4095) in "fast mode" to the MCP4725.
+    /// The MCP4725 fast-mode two-byte write format:
+    ///   Byte 1 = [0b0110 D11..D8]
+    ///   Byte 2 = [D7..D0]
+    /// PD bits = 00 (normal operation).
+    pub fn write_fast_mode(&mut self, value12: u16) -> Result<(), E> {
+        // Make sure value12 is at most 12 bits:
+        let value12 = value12 & 0x0FFF;
 
-        let byte1 = CMD_WRITE_UPDATE;
-        let byte2 = (value >> 8).bitand(0x0F) as u8;
-        let byte3 = (value).bitand(0x0F) as u8;
+        // Upper byte = 0b0110xxxx (fast mode + normal power-down)
+        // 0x60 = 0b01100000
+        let high_byte = 0x00 | ((value12 >> 8) & 0x0F) as u8;
+        let low_byte = (value12 & 0xFF) as u8;
 
-        let data = [byte1, byte2, byte3];
-
-        self.i2c.write(AD5693_I2C_ADDR, &data)
-    }
-
-    pub fn read(&mut self) -> Result<u16, E> {
-        let mut bytes: [u8; 2] = [0; 2];
-        self.i2c.read(AD5693_I2C_ADDR, bytes.as_mut_slice())?;
-        Ok(u16::from_be_bytes(bytes))
+        self.i2c.write(MCP4725_I2C_ADDR, &[high_byte, low_byte])
     }
 
     /// If you need to free the I2C peripheral
