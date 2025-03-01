@@ -18,6 +18,9 @@ log = { version = "0.4.22" }
 embedded-io = "0.6.1"
 heapless = { version = "0.8.0", default-features = false }
 embedded-hal = "1.0.0"
+trouble-host = { git = "https://github.com/embassy-rs/trouble", package ="trouble-host", rev = "92841fcc8bb986368456239a7bbf25be2f709ec1"}
+embassy-time = "0.4"
+embassy-futures = "0.1"
 
 esp-wifi = { version = "0.12.0", features = ["esp32c3", "ble"] }
 embassy-executor    = { version = "0.7.0", features = ["task-arena-size-32768"] }
