@@ -11,19 +11,11 @@ use esp_hal::{
     delay::Delay,
     i2c::master::{Config, I2c},
     main,
-    time::{now, Duration, RateExtU32},
+    time::{Duration, RateExtU32, now},
     timer::timg::TimerGroup,
 };
 use esp_println::logger;
 
-use bleps::{
-    ad_structure::{
-        create_advertising_data, AdStructure, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE,
-    },
-    att::Uuid,
-    attribute_server::{AttributeServer, NotificationData, WorkResult},
-    gatt, Ble, HciConnector,
-};
 use esp_wifi::ble::controller::BleConnector;
 
 /// I2C address for the MCP4725 (as configured on your board).

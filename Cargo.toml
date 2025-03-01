@@ -2,7 +2,7 @@
 name = "scotchasaur"
 version = "0.1.0"
 authors = ["James Connolly <dogman3117@gmail.com>"]
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
@@ -12,7 +12,7 @@ esp-backtrace = { version = "0.15.0", features = [
   "panic-handler",
   "println",
 ] }
-esp-hal = { version = "0.23.1", features = ["esp32c3"] }
+esp-hal = { version = "0.23.1", features = ["esp32c3", "unstable"] }
 esp-println = { version = "0.13.0", features = ["esp32c3", "log"] }
 log = { version = "0.4.22" }
 embedded-io = "0.6.1"
@@ -20,10 +20,12 @@ heapless = { version = "0.8.0", default-features = false }
 embedded-hal = "1.0.0"
 
 esp-wifi = { version = "0.12.0", features = ["esp32c3", "ble"] }
-bleps = { git = "https://github.com/bjoernQ/bleps", package = "bleps", rev = "a5148d8ae679e021b78f53fd33afb8bb35d0b62e", features = [
-  "macros",
+embassy-executor    = { version = "0.7.0", features = ["task-arena-size-32768"] }
 
-] }
+
+esp-hal-embassy = { version = "0.6.0", features=["esp32c3"] }
+esp-alloc = { version = "0.6.0" }
+bt-hci = { version = "0.2" }
 
 [profile.dev]
 # Rust debug is too slow.
@@ -35,6 +37,15 @@ codegen-units = 1        # LLVM can perform better optimizations using a single 
 debug = 2
 debug-assertions = false
 incremental = false
-lto = 'fat'
+lto = 'thin'
 opt-level = 's'
 overflow-checks = false
+
+
+[patch.crates-io]
+esp-wifi = {git = "https://github.com/esp-rs/esp-hal.git", rev = "5d0145eca901f42cbebe1e41cde10e79afba3af8"}
+esp-backtrace = {git = "https://github.com/esp-rs/esp-hal.git", rev = "5d0145eca901f42cbebe1e41cde10e79afba3af8"}
+esp-hal = {git = "https://github.com/esp-rs/esp-hal.git", rev = "5d0145eca901f42cbebe1e41cde10e79afba3af8"}
+esp-hal-embassy = {git = "https://github.com/esp-rs/esp-hal.git", rev = "5d0145eca901f42cbebe1e41cde10e79afba3af8"}
+esp-alloc = {git = "https://github.com/esp-rs/esp-hal.git", rev = "5d0145eca901f42cbebe1e41cde10e79afba3af8"}
+esp-println = {git = "https://github.com/esp-rs/esp-hal.git", rev = "5d0145eca901f42cbebe1e41cde10e79afba3af8"}
