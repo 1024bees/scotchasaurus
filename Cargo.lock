@@ -382,8 +382,19 @@ name = "esp-backtrace"
 version = "0.15.0"
 source = "git+https://github.com/esp-rs/esp-hal.git?rev=5d0145eca901f42cbebe1e41cde10e79afba3af8#5d0145eca901f42cbebe1e41cde10e79afba3af8"
 dependencies = [
- "esp-build",
+ "esp-build 0.2.0",
  "esp-println",
+]
+
+[[package]]
+name = "esp-build"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b94a4b8d74e7cc7baabcca5b2277b41877e039ad9cd49959d48ef94dac7eab4b"
+dependencies = [
+ "quote",
+ "syn",
+ "termcolor",
 ]
 
 [[package]]
@@ -428,7 +439,7 @@ dependencies = [
  "embedded-io",
  "embedded-io-async",
  "enumset",
- "esp-build",
+ "esp-build 0.2.0",
  "esp-config",
  "esp-hal-procmacros",
  "esp-metadata",
@@ -461,7 +472,7 @@ dependencies = [
  "embassy-time",
  "embassy-time-driver",
  "embassy-time-queue-utils",
- "esp-build",
+ "esp-build 0.2.0",
  "esp-config",
  "esp-hal",
  "esp-hal-procmacros",
@@ -502,7 +513,7 @@ version = "0.13.0"
 source = "git+https://github.com/esp-rs/esp-hal.git?rev=5d0145eca901f42cbebe1e41cde10e79afba3af8#5d0145eca901f42cbebe1e41cde10e79afba3af8"
 dependencies = [
  "critical-section",
- "esp-build",
+ "esp-build 0.2.0",
  "log",
  "portable-atomic",
 ]
@@ -518,6 +529,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp-storage"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "661aebceb62e0caadd7e6bddd88b2d891c3b08cea4eb5afe96ef697674ccda5c"
+dependencies = [
+ "critical-section",
+ "embedded-storage",
+ "esp-build 0.1.0",
+]
+
+[[package]]
 name = "esp-wifi"
 version = "0.12.0"
 source = "git+https://github.com/esp-rs/esp-hal.git?rev=5d0145eca901f42cbebe1e41cde10e79afba3af8#5d0145eca901f42cbebe1e41cde10e79afba3af8"
@@ -530,7 +552,7 @@ dependencies = [
  "embedded-io",
  "embedded-io-async",
  "esp-alloc",
- "esp-build",
+ "esp-build 0.2.0",
  "esp-config",
  "esp-hal",
  "esp-metadata",
@@ -1014,11 +1036,13 @@ dependencies = [
  "embassy-time",
  "embedded-hal 1.0.0",
  "embedded-io",
+ "embedded-storage",
  "esp-alloc",
  "esp-backtrace",
  "esp-hal",
  "esp-hal-embassy",
  "esp-println",
+ "esp-storage",
  "esp-wifi",
  "heapless",
  "log",

@@ -2,7 +2,7 @@
 name = "scotchasaur"
 version = "0.1.0"
 authors = ["James Connolly <dogman3117@gmail.com>"]
-edition = "2024"
+edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
@@ -13,6 +13,7 @@ esp-backtrace = { version = "0.15.0", features = [
   "println",
 ] }
 esp-hal = { version = "0.23.1", features = ["esp32c3", "unstable"] }
+esp-storage = { version = "0.4.0", features=["esp32c3"]}
 esp-println = { version = "0.13.0", features = ["esp32c3", "log"] }
 log = { version = "0.4.22" }
 embedded-io = "0.6.1"
@@ -29,6 +30,7 @@ embassy-executor    = { version = "0.7.0", features = ["task-arena-size-32768"] 
 esp-hal-embassy = { version = "0.6.0", features=["esp32c3"] }
 esp-alloc = { version = "0.6.0" }
 bt-hci = { version = "0.2" }
+embedded-storage = "0.3.1"
 
 [profile.dev]
 # Rust debug is too slow.
